@@ -77,19 +77,33 @@ const handleReservationCreate = async ({
     return {
       statusCode: 200,
       body: JSON.stringify({ reservationId }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (err) {
     console.error(err);
     return {
       statusCode: 400,
       body: JSON.stringify({ message: err.message }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   }
 };
 
 const validateReservation = async (reservation) => {
   const table = await tableByNumber(reservation.tableNumber);
-  console.log(JSON.stringify({table}))
+  console.log(JSON.stringify({ table }));
   if (!table) throw new Error("Table number doesnt exist");
 
   const reservations = await getReservationByTableNumber(
@@ -151,6 +165,13 @@ const handleTableCreate = async ({ id, number, places, isVip, minOrder }) => {
     return {
       statusCode: 200,
       body: JSON.stringify({ id }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (err) {
     console.error(err);
@@ -167,12 +188,26 @@ const handleTableList = async () => {
     return {
       statusCode: 200,
       body: JSON.stringify({ tables: data.Items }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (error) {
     console.error(error);
     return {
       statusCode: 400,
       body: JSON.stringify({ message: error.message }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   }
 };
@@ -208,6 +243,13 @@ const handleTableById = async (tableId) => {
     return {
       statusCode: 200,
       body: JSON.stringify(data.Items[0]),
+      headers: {
+        "Access-Control-Allow-Headers":
+        "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (error) {
     console.error(error);
@@ -229,6 +271,13 @@ const handleReservationList = async () => {
     return {
       statusCode: 200,
       body: JSON.stringify({ reservations: data.Items }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (error) {
     console.error(error);
@@ -266,6 +315,13 @@ const handleSignUp = async (email, password) => {
     return {
       statusCode: 200,
       body: "Sign-up process is successful",
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (error) {
     console.error(error);
@@ -303,6 +359,13 @@ const handleSignIn = async (email, password) => {
       body: JSON.stringify({
         accessToken: response.AuthenticationResult.IdToken,
       }),
+      headers: {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
     };
   } catch (error) {
     console.error(error);
