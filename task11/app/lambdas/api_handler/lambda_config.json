@@ -16,20 +16,23 @@
   ],
   "event_sources": [],
   "env_variables": {
-    "CUPId": {
+    "tables_table": "Tables",
+    "reservations_table": "Reservations",
+    "booking_userpool": "simple-booking-userpool",
+    "cup_id": {
       "resource_name": "${booking_userpool}",
       "resource_type": "cognito_idp",
       "parameter": "id"
     },
-    "CUPClientId": {
+    "cup_client_id": {
       "resource_name": "${booking_userpool}",
       "resource_type": "cognito_idp",
       "parameter": "client_id"
-    },
-    "tables_table": "${tables_table}",
-    "reservations_table": "${reservations_table}"
+      }
   },
-  "publish_version": false,
+  "publish_version": true,
+  "alias": "${lambdas_alias_name}",
   "url_config": {},
-  "ephemeral_storage": 512
+  "ephemeral_storage": 512,
+  "tags": {}
 }
