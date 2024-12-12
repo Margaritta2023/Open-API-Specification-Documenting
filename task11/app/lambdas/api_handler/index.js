@@ -60,40 +60,90 @@ const handleSignup = async (event) => {
     Username: email,
     UserAttributes: [
       { Name: 'email', Value: email },
-      { Name: 'name', Value: `${firstName} ${lastName}` }
+      { Name: 'name', Value: `${firstName} ${lastName}` },
     ],
-    MessageAction: 'SUPPRESS',
-    TemporaryPassword: password
+    MessageAction: 'SUPPRESS', // Suppress the default welcome message
+    TemporaryPassword: password,
   };
 
   try {
+    // Step 1: Create the user
+    console.log("Creating user in Cognito...");
     await cognito.adminCreateUser(createUserParams).promise();
 
+    // Step 2: Set permanent password
+    console.log("Setting permanent password...");
     const setPasswordParams = {
       UserPoolId: CUP_ID,
       Username: email,
       Password: password,
-      Permanent: true
+      Permanent: true,
     };
 
     await cognito.adminSetUserPassword(setPasswordParams).promise();
 
-    console.log("cognito:", cognito);
-
+    // Success response
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ message: 'User created successfully with a permanent password' })
+      body: JSON.stringify({ message: 'User created successfully with a permanent password' }),
     };
   } catch (error) {
-    console.error('Signup error:', error);
+    // Improved error logging
+    console.error('Signup process error:', error);
+
+    // Return detailed error to identify issues
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({ error: error.message, stack: error.stack }),
     };
   }
 };
+
+
+// const handleSignup = async (event) => {
+//   const { firstName, lastName, email, password } = JSON.parse(event.body);
+
+//   const createUserParams = {
+//     UserPoolId: CUP_ID,
+//     Username: email,
+//     UserAttributes: [
+//       { Name: 'email', Value: email },
+//       { Name: 'name', Value: `${firstName} ${lastName}` }
+//     ],
+//     MessageAction: 'SUPPRESS',
+//     TemporaryPassword: password
+//   };
+
+//   try {
+//     await cognito.adminCreateUser(createUserParams).promise();
+
+//     const setPasswordParams = {
+//       UserPoolId: CUP_ID,
+//       Username: email,
+//       Password: password,
+//       Permanent: true
+//     };
+
+//     await cognito.adminSetUserPassword(setPasswordParams).promise();
+
+//     console.log("cognito:", cognito);
+
+//     return {
+//       statusCode: 200,
+//       headers: CORS_HEADERS,
+//       body: JSON.stringify({ message: 'User created successfully with a permanent password' })
+//     };
+//   } catch (error) {
+//     console.error('Signup error:', error);
+//     return {
+//       statusCode: 400,
+//       headers: CORS_HEADERS,
+//       body: JSON.stringify({ error: error.message })
+//     };
+//   }
+// };
 
 const handleSignin = async (event) => {
   const { email, password } = JSON.parse(event.body);
