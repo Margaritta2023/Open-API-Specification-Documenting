@@ -1,391 +1,319 @@
-const AWS = require("aws-sdk");
-const { v4: uuidv4 } = require("uuid");
-
-const userPoolId = process.env.CUPId;
-const clientId = process.env.CUPClientId;
-
+const AWS = require('aws-sdk');
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
 const cognito = new AWS.CognitoIdentityServiceProvider();
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { v4: uuidv4 } = require('uuid');
+
+const TABLE_TABLE = process.env.table_table;
+const RESERVATION_TABLE = process.env.reservation_table;
+const CUP_ID = process.env.cup_id;
+const CUP_CLIENT_ID = process.env.cup_client_id;
+const CORS_HEADERS = {
+  "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "*",
+  "Accept-Version": "*"
+};
 
 exports.handler = async (event) => {
-  // TODO implement
-  console.log(JSON.stringify(event));
-  const body = JSON.parse(event.body);
+  const {httpMethod, path} = event;
 
-  if (event.path === "/signup" && event.httpMethod === "POST") {
-    return handleSignUp(body.email, body.password);
-  }
-
-  if (event.path === "/signin" && event.httpMethod === "POST") {
-    return handleSignIn(body.email, body.password);
-  }
-
-  if (event.resource === "/tables" && event.httpMethod === "GET") {
-    return handleTableList();
-  }
-
-  if (event.resource === "/tables" && event.httpMethod === "POST") {
-    return handleTableCreate(body);
-  }
-
-  if (event.resource === "/tables/{tableId}" && event.httpMethod === "GET") {
-    return handleTableById(event.pathParameters.tableId);
-  }
-
-  if (event.path === "/reservations" && event.httpMethod === "POST") {
-    return handleReservationCreate(body);
-  }
-
-  if (event.path === "/reservations" && event.httpMethod === "GET") {
-    return handleReservationList(body);
-  }
-};
-
-const handleReservationCreate = async ({
-  tableNumber,
-  clientName,
-  phoneNumber,
-  date,
-  slotTimeStart,
-  slotTimeEnd,
-}) => {
-  const reservation = {
-    tableNumber,
-    clientName,
-    phoneNumber,
-    date,
-    slotTimeStart,
-    slotTimeEnd,
-  };
-  const reservationId = uuidv4();
-  const params = {
-    TableName: process.env.reservations_table,
-    Item: {
-      id: reservationId,
-      tableNumber,
-      clientName,
-      phoneNumber,
-      date,
-      slotTimeStart,
-      slotTimeEnd,
-    },
-  };
   try {
-    await validateReservation(reservation);
+    switch (true) {
+      case path === '/signup' && httpMethod === 'POST':
+        return handleSignup(event);
 
-    await docClient.put(params).promise();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ reservationId }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
-    };
-  } catch (err) {
-    console.error(err);
+      case path === '/signin' && httpMethod === 'POST':
+        return handleSignin(event);
+
+      case path === '/tables' && httpMethod === 'GET':
+        return handleGetTables(event);
+
+      case path === '/tables' && httpMethod === 'POST':
+        return handleCreateTable(event);
+
+      case /^\/tables\/\d+$/.test(path) && httpMethod === 'GET':
+        return handleGetTableById(event);
+
+      case path === '/reservations' && httpMethod === 'POST':
+        return handleCreateReservation(event);
+
+      case path === '/reservations' && httpMethod === 'GET':
+        return handleGetReservations(event);
+
+      default:
+        throw new Error('Bad Request');
+    }
+  } catch (error) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: err.message }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
     };
   }
 };
 
-const validateReservation = async (reservation) => {
-  const table = await tableByNumber(reservation.tableNumber);
-  console.log(JSON.stringify({ table }));
-  if (!table) throw new Error("Table number doesnt exist");
+const handleSignup = async (event) => {
+  const { firstName, lastName, email, password } = JSON.parse(event.body);
 
-  const reservations = await getReservationByTableNumber(
-    reservation.tableNumber
-  );
-  if (reservations.length == 0) return true;
+  const createUserParams = {
+    UserPoolId: CUP_ID,
+    Username: email,
+    UserAttributes: [
+      { Name: 'email', Value: email },
+      { Name: 'name', Value: `${firstName} ${lastName}` }
+    ],
+    MessageAction: 'SUPPRESS',
+    TemporaryPassword: password
+  };
 
-  const invalid = reservations.some((actualReservation) => {
-    const actualReservationStartDate = new Date(
-      `${actualReservation.date} ${actualReservation.slotTimeStart}`
-    );
-    const actualReservationEndDate = new Date(
-      `${actualReservation.date} ${actualReservation.slotTimeEnd}`
-    );
-    const reservationStartDate = new Date(
-      `${reservation.date} ${reservation.slotTimeStart}`
-    );
-    const reservationEndDate = new Date(
-      `${reservation.date} ${reservation.slotTimeEnd}`
-    );
+  try {
+    await cognito.adminCreateUser(createUserParams).promise();
 
-    if (
-      actualReservationStartDate <= reservationStartDate &&
-      actualReservationEndDate >= reservationStartDate
-    )
-      return true;
-    if (
-      actualReservationStartDate <= reservationEndDate &&
-      actualReservationEndDate >= reservationEndDate
-    )
-      return true;
-    return false;
-  });
-  if (invalid) {
-    throw new Error("Reservation date overlaps existent reservation");
-  } else return true;
+    const setPasswordParams = {
+      UserPoolId: CUP_ID,
+      Username: email,
+      Password: password,
+      Permanent: true
+    };
+
+    await cognito.adminSetUserPassword(setPasswordParams).promise();
+
+    console.log("cognito:", cognito);
+
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ message: 'User created successfully with a permanent password' })
+    };
+  } catch (error) {
+    console.error('Signup error:', error);
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 };
 
-const getReservationByTableNumber = async (tableNumber) => {
-  const reservations = await getReservationList();
-  return reservations.Items.filter(
-    (reservation) => reservation.tableNumber === tableNumber
-  );
-};
+const handleSignin = async (event) => {
+  const { email, password } = JSON.parse(event.body);
 
-const handleTableCreate = async ({ id, number, places, isVip, minOrder }) => {
   const params = {
-    TableName: process.env.tables_table,
+    AuthFlow: 'USER_PASSWORD_AUTH',
+    ClientId: CUP_CLIENT_ID,
+    AuthParameters: {
+      USERNAME: email,
+      PASSWORD: password
+    }
+  };
+
+  try {
+    const authResult = await cognito.initiateAuth(params).promise();
+
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ accessToken: authResult.AuthenticationResult.IdToken })
+    };
+  } catch (error) {
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+};
+
+const handleGetTables = async () => {
+  const params = {
+    TableName: TABLE_TABLE
+  };
+
+  try {
+    const data = await dynamoDb.scan(params).promise();
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ tables: data.Items })
+    };
+  } catch (error) {
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+};
+
+const handleCreateTable = async (event) => {
+  const { id, number, places, isVip, minOrder } = JSON.parse(event.body);
+
+  const params = {
+    TableName: TABLE_TABLE,
     Item: {
-      id,
+      id: id,
       number,
       places,
       isVip,
-      minOrder,
-    },
+      minOrder
+    }
   };
-  try {
-    await docClient.put(params).promise();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ id }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
-    };
-  } catch (err) {
-    console.error(err);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: err.message }),
-    };
-  }
-};
 
-const handleTableList = async () => {
   try {
-    const data = await getTableList();
+    await dynamoDb.put(params).promise();
     return {
       statusCode: 200,
-      body: JSON.stringify({ tables: data.Items }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ id })
     };
   } catch (error) {
-    console.error(error);
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: error.message }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
     };
   }
 };
 
-const getTableList = async () => {
+const handleGetTableById = async (event) => {
+  const tableId = parseInt(event.pathParameters.tableId, 10);
+
   const params = {
-    TableName: process.env.tables_table,
+    TableName: TABLE_TABLE,
+    Key: {
+      id: tableId
+    }
   };
-  return await docClient.scan(params).promise();
-};
 
-const handleTableById = async (tableId) => {
-  if (!tableId) {
+  try {
+    const data = await dynamoDb.get(params).promise();
+    if (!data.Item) {
+      return {
+        statusCode: 404,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'Table not found' })
+      };
+    }
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify(data.Item)
+    };
+  } catch (error) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: "Missing id parameter" }),
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
     };
   }
+};
 
-  const params = {
-    TableName: process.env.tables_table,
-    KeyConditionExpression: "#id = :idValue",
+const handleCreateReservation = async (event) => {
+  const { tableNumber, clientName, phoneNumber, date, slotTimeStart, slotTimeEnd } = JSON.parse(event.body);
+
+  const tableExistsParams = {
+    TableName: TABLE_TABLE,
+    FilterExpression: "#num = :tableNumber",
     ExpressionAttributeNames: {
-      "#id": "id",
+      "#num": "number", 
     },
     ExpressionAttributeValues: {
-      ":idValue": parseInt(tableId),
+      ":tableNumber": tableNumber,
     },
   };
 
   try {
-    const data = await docClient.query(params).promise();
+    const tableExistsResult = await dynamoDb.scan(tableExistsParams).promise();
+    console.log("Table Exists Result:", JSON.stringify(tableExistsResult));
+
+    if (tableExistsResult.Items.length === 0) {
+      console.log("Table does not exist");
+      return {
+        statusCode: 400,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'Table does not exist' })
+      };
+    }
+
+    const paramsCheck = {
+      TableName: RESERVATION_TABLE,
+      FilterExpression: '#tableNumber = :tableNumber AND #date = :date AND ((#slotTimeStart < :slotTimeEnd AND #slotTimeEnd > :slotTimeStart) OR (#slotTimeStart < :slotTimeEnd AND #slotTimeEnd > :slotTimeStart))',
+      ExpressionAttributeNames: {
+        '#tableNumber': 'tableNumber',
+        '#date': 'date',
+        '#slotTimeStart': 'slotTimeStart',
+        '#slotTimeEnd': 'slotTimeEnd'
+      },
+      ExpressionAttributeValues: {
+        ':tableNumber': tableNumber,
+        ':date': date,
+        ':slotTimeStart': slotTimeStart,
+        ':slotTimeEnd': slotTimeEnd
+      }
+    };
+
+    const existingReservations = await dynamoDb.scan(paramsCheck).promise();
+    console.log("Existing Reservations Result:", JSON.stringify(existingReservations));
+
+    if (existingReservations.Items.length > 0) {
+      console.log("Reservation overlaps with an existing reservation");
+      return {
+        statusCode: 400,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'Reservation overlaps with an existing reservation' })
+      };
+    }
+
+    const reservationId = uuidv4();
+
+    const params = {
+      TableName: RESERVATION_TABLE,
+      Item: {
+        id: reservationId,
+        tableNumber,
+        clientName,
+        phoneNumber,
+        date,
+        slotTimeStart,
+        slotTimeEnd
+      }
+    };
+
+    await dynamoDb.put(params).promise();
+    console.log("Reservation created successfully");
     return {
       statusCode: 200,
-      body: JSON.stringify(data.Items[0]),
-      headers: {
-        "Access-Control-Allow-Headers":
-        "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ reservationId })
     };
   } catch (error) {
-    console.error(error);
+    console.error("Error:", error);
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: error.message }),
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
     };
   }
 };
 
-const tableByNumber = async (number) => {
-  const tables = await getTableList();
-  return tables.Items.find((table) => table.number === number);
-};
 
-const handleReservationList = async () => {
-  try {
-    const data = await getReservationList();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ reservations: data.Items }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: error.message }),
-    };
-  }
-};
-
-const getReservationList = async () => {
+const handleGetReservations = async () => {
   const params = {
-    TableName: process.env.reservations_table,
+    TableName: RESERVATION_TABLE
   };
 
-  return await docClient.scan(params).promise();
-};
-
-const handleSignUp = async (email, password) => {
-  const params = {
-    UserPoolId: userPoolId,
-    Username: email,
-    TemporaryPassword: password,
-    UserAttributes: [
-      {
-        Name: "email",
-        Value: email,
-      },
-    ],
-  };
-
   try {
-    await cognito.adminCreateUser(params).promise();
-    await handleConfirmSignUp(email, password);
+    const data = await dynamoDb.scan(params).promise();
     return {
       statusCode: 200,
-      body: "Sign-up process is successful",
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ reservations: data.Items })
     };
   } catch (error) {
-    console.error(error);
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: error.message }),
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: error.message })
     };
   }
-};
-
-const handleConfirmSignUp = async (email, password) => {
-  const signinResponse = await cognitoSignIn(email, password);
-  console.log(JSON.stringify({ signinResponse }));
-  return await cognito
-    .adminRespondToAuthChallenge({
-      UserPoolId: userPoolId,
-      ClientId: clientId,
-      ChallengeName: "NEW_PASSWORD_REQUIRED",
-      Session: signinResponse.Session,
-      ChallengeResponses: {
-        USERNAME: email,
-        PASSWORD: password,
-        NEW_PASSWORD: password,
-      },
-    })
-    .promise();
-};
-
-const handleSignIn = async (email, password) => {
-  try {
-    const response = await cognitoSignIn(email, password);
-    console.log(JSON.stringify(response));
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        accessToken: response.AuthenticationResult.IdToken,
-      }),
-      headers: {
-        "Access-Control-Allow-Headers":
-          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Accept-Version": "*",
-      },
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: error.message }),
-    };
-  }
-};
-
-const cognitoSignIn = async (email, password) => {
-  const params = {
-    AuthFlow: "ADMIN_NO_SRP_AUTH",
-
-    ClientId: clientId,
-    UserPoolId: userPoolId,
-    AuthParameters: {
-      USERNAME: email,
-      PASSWORD: password,
-    },
-  };
-  return await cognito.adminInitiateAuth(params).promise();
 };
