@@ -435,7 +435,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SignUpResponse"
+                  "$ref": "#/components/schemas/Empty"
                 }
               }
             }
@@ -462,7 +462,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SignUpRequest"
+                "$ref": "#/components/schemas/Empty"
               }
             }
           }
