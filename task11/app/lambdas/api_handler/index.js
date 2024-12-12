@@ -295,60 +295,125 @@ const getReservationList = async () => {
 
   return await docClient.scan(params).promise();
 };
+const handleSignup = async (email, password) => {
+	const createUserParams = {
+		UserPoolId: process.env.CUPId,
+		Username: email,
+		TemporaryPassword: password,
+		UserAttributes: [{ Name: 'email', Value: email }],
+		MessageAction: 'SUPPRESS',
+	};
 
-const handleSignUp = async (email, password) => {
-  const params = {
-    UserPoolId: userPoolId,
-    Username: email,
-    TemporaryPassword: password,
-    UserAttributes: [
-      {
-        Name: "email",
-        Value: email,
-      },
-    ],
-  };
+	try {
+		await cognito.adminCreateUser(createUserParams).promise();
+		const initiateAuthParams = {
+			AuthFlow: 'ADMIN_NO_SRP_AUTH',
+			UserPoolId: process.env.CUPId,
+			ClientId: process.env.CUPClientId,
+			AuthParameters: {
+				USERNAME: email,
+				PASSWORD: password,
+			},
+		};
 
-  try {
-    await cognito.adminCreateUser(params).promise();
-    await handleConfirmSignUp(email, password);
-    return {
-      statusCode: 200,
-      body: "Sign-up process is successful",
-      headers: {
+		const signinResponse = await cognito
+			.adminInitiateAuth(initiateAuthParams)
+			.promise();
+
+		await cognito
+			.adminRespondToAuthChallenge({
+				UserPoolId: process.env.CUPId,
+				ClientId: process.env.CUPClientId,
+				ChallengeName: 'NEW_PASSWORD_REQUIRED',
+				Session: signinResponse.Session,
+				ChallengeResponses: {
+					USERNAME: email,
+					PASSWORD: password,
+					NEW_PASSWORD: password,
+				},
+			})
+			.promise();
+
+		return {
+			statusCode: 200,
+			headers:  {
         "Access-Control-Allow-Headers":
           "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "*",
         "Accept-Version": "*",
       },
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: error.message }),
-    };
-  }
+			body: 'Sign-up process is successful',
+		};
+	} catch (error) {
+		console.error(error);
+		return {
+			statusCode: 400,
+			headers:  {
+        "Access-Control-Allow-Headers":
+          "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "*",
+        "Accept-Version": "*",
+      },
+			body: JSON.stringify({ message: error.message }),
+		};
+	}
 };
 
-const handleConfirmSignUp = async (email, password) => {
-  const signinResponse = await cognitoSignIn(email, password);
-  console.log(JSON.stringify({ signinResponse }));
-  return await cognito
-    .adminRespondToAuthChallenge({
-      UserPoolId: userPoolId,
-      ClientId: clientId,
-      ChallengeName: "NEW_PASSWORD_REQUIRED",
-      Session: signinResponse.Session,
-      ChallengeResponses: {
-        USERNAME: email,
-        PASSWORD: password,
-        NEW_PASSWORD: password,
-      },
-    })
-    .promise();
-};
+// const handleSignUp = async (email, password) => {
+//   const params = {
+//     UserPoolId: userPoolId,
+//     Username: email,
+//     TemporaryPassword: password,
+//     UserAttributes: [
+//       {
+//         Name: "email",
+//         Value: email,
+//       },
+//     ],
+//   };
+
+//   try {
+//     await cognito.adminCreateUser(params).promise();
+//     await handleConfirmSignUp(email, password);
+//     return {
+//       statusCode: 200,
+//       body: "Sign-up process is successful",
+//       headers: {
+//         "Access-Control-Allow-Headers":
+//           "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+//         "Access-Control-Allow-Origin": "*",
+//         "Access-Control-Allow-Methods": "*",
+//         "Accept-Version": "*",
+//       },
+//     };
+//   } catch (error) {
+//     console.error(error);
+//     return {
+//       statusCode: 400,
+//       body: JSON.stringify({ message: error.message }),
+//     };
+//   }
+// };
+
+// const handleConfirmSignUp = async (email, password) => {
+//   const signinResponse = await cognitoSignIn(email, password);
+//   console.log(JSON.stringify({ signinResponse }));
+//   return await cognito
+//     .adminRespondToAuthChallenge({
+//       UserPoolId: userPoolId,
+//       ClientId: clientId,
+//       ChallengeName: "NEW_PASSWORD_REQUIRED",
+//       Session: signinResponse.Session,
+//       ChallengeResponses: {
+//         USERNAME: email,
+//         PASSWORD: password,
+//         NEW_PASSWORD: password,
+//       },
+//     })
+//     .promise();
+// };
 
 const handleSignIn = async (email, password) => {
   try {
